@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LopanovCo/echo-jwt/core"
+	"github.com/LdDl/echo-jwt/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"

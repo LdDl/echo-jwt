@@ -1,4 +1,4 @@
-module github.com/LopanovCo/echo-jwt
+module github.com/LdDl/echo-jwt
 
 go 1.25.0
 

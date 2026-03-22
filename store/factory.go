@@ -3,7 +3,7 @@ package store
 import (
 	"fmt"
 
-	"github.com/LopanovCo/echo-jwt/core"
+	"github.com/LdDl/echo-jwt/core"
 )
 
 // StoreType represents the type of store to create

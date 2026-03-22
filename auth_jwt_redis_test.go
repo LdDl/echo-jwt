@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LopanovCo/echo-jwt/store"
+	"github.com/LdDl/echo-jwt/store"
 	gojwt "github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"

@@ -364,7 +364,7 @@ If you need to link a user's different OAuth accounts (e.g., Google and GitHub) 
 To implement server-side token revocation, you can integrate Redis store:
 
 ```go
-import "github.com/LopanovCo/echo-jwt/store/redis"
+import "github.com/LdDl/echo-jwt/store/redis"
 
 // Add in initJWTParams()
 TokenStore: redis.NewStore(...),
@@ -397,4 +397,4 @@ Refer to the `redis_store` example for more details.
 - [Google OAuth 2.0 Documentation](https://developers.google.com/identity/protocols/oauth2)
 - [GitHub OAuth Documentation](https://docs.github.com/en/developers/apps/building-oauth-apps)
 - [JWT RFC 7519](https://tools.ietf.org/html/rfc7519)
-- [echo-jwt Project](https://github.com/LopanovCo/echo-jwt)
+- [echo-jwt Project](https://github.com/LdDl/echo-jwt)

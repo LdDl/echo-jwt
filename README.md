@@ -165,11 +165,11 @@ authMiddleware := &jwt.EchoJWTMiddleware{
 Requires Go 1.24+
 
 ```bash
-go get -u github.com/LopanovCo/echo-jwt
+go get -u github.com/LdDl/echo-jwt
 ```
 
 ```go
-import "github.com/LopanovCo/echo-jwt"
+import "github.com/LdDl/echo-jwt"
 ```
 
 ---
@@ -187,7 +187,7 @@ import (
   "os"
   "time"
 
-  jwt "github.com/LopanovCo/echo-jwt"
+  jwt "github.com/LdDl/echo-jwt"
   "github.com/labstack/echo/v5"
   "github.com/golang-jwt/jwt/v5"
 )
@@ -581,7 +581,7 @@ import (
     "strings"
     "time"
 
-    jwt "github.com/LopanovCo/echo-jwt"
+    jwt "github.com/LdDl/echo-jwt"
     "github.com/labstack/echo/v5"
     "github.com/golang-jwt/jwt/v5"
 )
@@ -1034,7 +1034,7 @@ import (
     "log"
     "time"
 
-    jwt "github.com/LopanovCo/echo-jwt"
+    jwt "github.com/LdDl/echo-jwt"
     gojwt "github.com/golang-jwt/jwt/v5"
 )
 
@@ -1222,7 +1222,7 @@ import (
     "net/http"
     "time"
 
-    jwt "github.com/LopanovCo/echo-jwt"
+    jwt "github.com/LdDl/echo-jwt"
     "github.com/labstack/echo/v5"
 )
 

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/LopanovCo/echo-jwt/core"
+	"github.com/LdDl/echo-jwt/core"
 	"github.com/redis/rueidis"
 )
 

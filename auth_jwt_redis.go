@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/LopanovCo/echo-jwt/store"
+	"github.com/LdDl/echo-jwt/store"
 )
 
 // RedisOption defines a function type for configuring Redis store

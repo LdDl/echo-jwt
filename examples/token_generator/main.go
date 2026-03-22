@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	jwt "github.com/LopanovCo/echo-jwt"
+	jwt "github.com/LdDl/echo-jwt"
 	gojwt "github.com/golang-jwt/jwt/v5"
 )
 

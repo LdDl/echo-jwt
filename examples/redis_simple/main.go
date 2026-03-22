@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	jwt "github.com/LopanovCo/echo-jwt"
+	jwt "github.com/LdDl/echo-jwt"
 	"github.com/labstack/echo/v5"
 	gojwt "github.com/golang-jwt/jwt/v5"
 )

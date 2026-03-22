@@ -1,11 +1,11 @@
-module github.com/LopanovCo/echo-jwt/examples/oauth_sso
+module github.com/LdDl/echo-jwt/examples/oauth_sso
 
 go 1.25.0
 
-replace github.com/LopanovCo/echo-jwt => ../../
+replace github.com/LdDl/echo-jwt => ../../
 
 require (
-	github.com/LopanovCo/echo-jwt v0.0.0
+	github.com/LdDl/echo-jwt v0.0.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v5 v5.0.4

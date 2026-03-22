@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LopanovCo/echo-jwt/core"
+	"github.com/LdDl/echo-jwt/core"
 )
 
 var _ core.TokenStore = &InMemoryRefreshTokenStore{}

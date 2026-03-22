@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LopanovCo/echo-jwt/core"
+	"github.com/LdDl/echo-jwt/core"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"

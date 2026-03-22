@@ -1,9 +1,9 @@
 # Echo JWT Middleware
 
-This is a direct port of [appleboy/gin-jwt](https://github.com/appleboy/gin-jwt) for the [Echo](https://github.com/labstack/echo) web framework. The only change is replacing `gin.Context` with `echo.Context`. All core logic, token handling, store implementations, and security features remain identical.
-
-A powerful and flexible JWT authentication middleware for the [Echo](https://github.com/labstack/echo) web framework, built on top of [golang-jwt/jwt](https://github.com/golang-jwt/jwt).
+A full-featured JWT authentication middleware for [Echo](https://github.com/labstack/echo), built on top of [golang-jwt/jwt](https://github.com/golang-jwt/jwt).
 Easily add login, token refresh, and authorization to your Echo applications.
+
+Based on [appleboy/gin-jwt](https://github.com/appleboy/gin-jwt) (ported from Gin to Echo) with additional features adopted from [labstack/echo-jwt](https://github.com/labstack/echo-jwt).
 
 ---
 
@@ -12,6 +12,7 @@ Easily add login, token refresh, and authorization to your Echo applications.
 - [Echo JWT Middleware](#echo-jwt-middleware)
   - [Table of Contents](#table-of-contents)
   - [Features](#features)
+  - [Extra Features (from labstack/echo-jwt)](#extra-features-from-labstackecho-jwt)
   - [Security Notice](#security-notice)
     - [🔒 Critical Security Requirements](#-critical-security-requirements)
     - [🛡️ Production Security Checklist](#️-production-security-checklist)
@@ -103,6 +104,46 @@ Easily add login, token refresh, and authorization to your Echo applications.
 - 🗄️ Pluggable refresh token storage (in-memory, Redis with client-side caching)
 - 🏭 Direct token generation without HTTP middleware
 - 📦 Structured Token type with metadata
+
+---
+
+## Extra Features (from [labstack/echo-jwt](https://github.com/labstack/echo-jwt))
+
+The following features are adopted from [labstack/echo-jwt](https://github.com/labstack/echo-jwt), which only provides token validation. This module combines them with the full gin-jwt feature set (login, refresh, logout, token store, etc.):
+
+| Feature | Description |
+|---------|-------------|
+| **Skipper** | Skip middleware for specific routes (e.g. public endpoints) |
+| **BeforeFunc** | Hook called before token extraction - useful for request preprocessing |
+| **SuccessHandler** | Hook called after successful token validation |
+| **ErrorHandler** | Custom error handler with access to the original error |
+| **ContinueOnIgnoredError** | Continue to the next handler when `ErrorHandler` returns `nil` - enables hybrid public/authenticated routes |
+| **Typed errors** | `TokenParsingError` and `TokenExtractionError` allow distinguishing between missing and invalid tokens |
+
+### Example: Hybrid Public/Authenticated Route
+
+```go
+authMiddleware, _ := jwt.New(&jwt.EchoJWTMiddleware{
+    // ... standard config ...
+    ContinueOnIgnoredError: true,
+    ErrorHandler: func(c *echo.Context, err error) error {
+        // No valid token - set a default public identity and continue
+        c.Set("public_user", true)
+        return nil
+    },
+})
+```
+
+### Example: Skipper
+
+```go
+authMiddleware, _ := jwt.New(&jwt.EchoJWTMiddleware{
+    // ... standard config ...
+    Skipper: func(c *echo.Context) bool {
+        return strings.HasPrefix(c.Request().URL.Path, "/public")
+    },
+})
+```
 
 ---
 

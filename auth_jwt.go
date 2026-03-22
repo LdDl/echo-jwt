@@ -18,6 +18,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 	"github.com/youmark/pkcs8"
 )
 
@@ -187,6 +188,34 @@ type EchoJWTMiddleware struct {
 	// If nil when UseRedisStore is true, will use default Redis configuration
 	RedisConfig *store.RedisConfig
 
+	// Skipper defines a function to skip middleware.
+	// Optional. Default: nil (middleware is not skipped).
+	Skipper middleware.Skipper
+
+	// BeforeFunc defines a function which is executed just before the middleware.
+	// Optional.
+	BeforeFunc middleware.BeforeFunc
+
+	// SuccessHandler defines a function which is executed for a valid token
+	// after successful authentication and authorization.
+	// If SuccessHandler returns an error, the middleware stops handler chain execution.
+	// Optional.
+	SuccessHandler func(c *echo.Context) error
+
+	// ErrorHandler defines a function which is executed when token extraction or
+	// parsing fails. It receives a typed error (TokenExtractionError or TokenParsingError).
+	// If ErrorHandler returns nil, the error is ignored and execution may continue
+	// (see ContinueOnIgnoredError).
+	// Optional.
+	ErrorHandler func(c *echo.Context, err error) error
+
+	// ContinueOnIgnoredError allows the next middleware/handler to be called when
+	// ErrorHandler decides to ignore the error (by returning nil).
+	// This is useful when parts of your site/api allow public access and some
+	// authorized routes provide extra functionality.
+	// Optional. Default: false.
+	ContinueOnIgnoredError bool
+
 	// inMemoryStore internal fallback refresh token store
 	inMemoryStore *store.InMemoryRefreshTokenStore
 }
@@ -263,6 +292,24 @@ var (
 	// ErrRefreshTokenNotFound indicates the refresh token was not found in storage
 	ErrRefreshTokenNotFound = errors.New("refresh token not found")
 )
+
+// TokenParsingError wraps errors that occur when token is parsed.
+// This helps to distinguish extractor errors from token parsing errors.
+type TokenParsingError struct {
+	Err error
+}
+
+func (e *TokenParsingError) Error() string { return e.Err.Error() }
+func (e *TokenParsingError) Unwrap() error { return e.Err }
+
+// TokenExtractionError wraps errors that occur when the token is extracted from the request.
+// This helps to distinguish extractor errors from token parsing errors.
+type TokenExtractionError struct {
+	Err error
+}
+
+func (e *TokenExtractionError) Error() string { return e.Err.Error() }
+func (e *TokenExtractionError) Unwrap() error { return e.Err }
 
 // New creates and initializes a new EchoJWTMiddleware instance
 func New(m *EchoJWTMiddleware) (*EchoJWTMiddleware, error) {
@@ -510,26 +557,54 @@ func (mw *EchoJWTMiddleware) MiddlewareInit() error {
 func (mw *EchoJWTMiddleware) MiddlewareFunc() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
-			mw.middlewareImpl(c)
-			if resp, _ := echo.UnwrapResponse(c.Response()); resp != nil && resp.Committed {
+			if mw.Skipper != nil && mw.Skipper(c) {
+				return next(c)
+			}
+
+			if mw.BeforeFunc != nil {
+				mw.BeforeFunc(c)
+			}
+
+			if err := mw.middlewareImpl(c); err != nil {
+				// ErrorHandler allows custom handling of middleware errors.
+				// When ErrorHandler returns nil, the error is "swallowed":
+				// - If ContinueOnIgnoredError is true, continue to next handler
+				// - Otherwise, stop the chain (return nil)
+				if mw.ErrorHandler != nil {
+					handlerErr := mw.ErrorHandler(c, err)
+					if handlerErr == nil && mw.ContinueOnIgnoredError {
+						return next(c)
+					}
+					return handlerErr
+				}
+				// No ErrorHandler - use default unauthorized response
+				mw.handleMiddlewareError(c, err)
 				return nil
 			}
+
+			// Authentication and authorization succeeded
+			if mw.SuccessHandler != nil {
+				if err := mw.SuccessHandler(c); err != nil {
+					return err
+				}
+			}
+
 			return next(c)
 		}
 	}
 }
 
-func (mw *EchoJWTMiddleware) middlewareImpl(c *echo.Context) {
+// middlewareImpl performs JWT validation, identity extraction, and authorization.
+// Returns nil on success, or a typed error on failure.
+func (mw *EchoJWTMiddleware) middlewareImpl(c *echo.Context) error {
 	claims, err := mw.GetClaimsFromJWT(c)
 	if err != nil {
-		mw.handleTokenError(c, err)
-		return
+		return &TokenParsingError{Err: err}
 	}
 
 	// For backwards compatibility since technically exp is not required in the spec but has been in gin-jwt
 	if claims["exp"] == nil {
-		mw.unauthorized(c, http.StatusBadRequest, mw.HTTPStatusMessageFunc(c, ErrMissingExpField))
-		return
+		return &TokenExtractionError{Err: ErrMissingExpField}
 	}
 
 	c.Set("JWT_PAYLOAD", claims)
@@ -540,8 +615,27 @@ func (mw *EchoJWTMiddleware) middlewareImpl(c *echo.Context) {
 	}
 
 	if !mw.Authorizer(c, identity) {
+		return ErrForbidden
+	}
+
+	return nil
+}
+
+// handleMiddlewareError handles middleware errors when no ErrorHandler is set.
+// It maps typed errors to the appropriate HTTP response.
+func (mw *EchoJWTMiddleware) handleMiddlewareError(c *echo.Context, err error) {
+	var parsingErr *TokenParsingError
+	var extractionErr *TokenExtractionError
+
+	switch {
+	case errors.Is(err, ErrForbidden):
 		mw.unauthorized(c, http.StatusForbidden, mw.HTTPStatusMessageFunc(c, ErrForbidden))
-		return
+	case errors.As(err, &parsingErr):
+		mw.handleTokenError(c, parsingErr.Err)
+	case errors.As(err, &extractionErr):
+		mw.unauthorized(c, http.StatusBadRequest, mw.HTTPStatusMessageFunc(c, extractionErr.Err))
+	default:
+		mw.unauthorized(c, http.StatusUnauthorized, mw.HTTPStatusMessageFunc(c, err))
 	}
 }
 

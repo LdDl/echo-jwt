@@ -151,7 +151,7 @@ func testExpiration(t *testing.T, store *RedisRefreshTokenStore) {
 	// Wait for expiration (2s TTL + 1s cache TTL margin)
 	time.Sleep(4 * time.Second)
 
-	// Token should be gone — Redis deletes expired keys, so we get "not found" rather than "expired"
+	// Token should be gone - Redis deletes expired keys, so we get "not found" rather than "expired"
 	_, err = store.Get(ctx, token)
 	assert.Error(t, err, "Token should not be accessible after expiry")
 

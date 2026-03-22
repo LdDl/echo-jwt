@@ -1,0 +1,358 @@
+package main
+
+import (
+	"log"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	jwt "github.com/LopanovCo/echo-jwt"
+	"github.com/labstack/echo/v5"
+	gojwt "github.com/golang-jwt/jwt/v5"
+)
+
+type login struct {
+	Username string `form:"username" json:"username" binding:"required"`
+	Password string `form:"password" json:"password" binding:"required"`
+}
+
+const roleAdmin = "admin"
+
+var (
+	identityKey = "id"
+	roleKey     = "role"
+	port        string
+)
+
+type User struct {
+	UserName string
+	Role     string
+}
+
+func init() {
+	port = os.Getenv("PORT")
+	if port == "" {
+		port = "8000"
+	}
+}
+
+func main() {
+	e := echo.New()
+
+	// Create middleware with comprehensive authorizer
+	authMiddleware, err := jwt.New(initParams())
+	if err != nil {
+		log.Fatal("JWT Error:" + err.Error())
+	}
+
+	// Initialize middleware
+	errInit := authMiddleware.MiddlewareInit()
+	if errInit != nil {
+		log.Fatal("authMiddleware.MiddlewareInit() Error:" + errInit.Error())
+	}
+
+	// Register routes
+	registerRoutes(e, authMiddleware)
+
+	log.Printf("Server starting on port %s", port)
+	log.Println("Available users:")
+	log.Println("  admin/admin (role: admin)")
+	log.Println("  user/user   (role: user)")
+	log.Println("  guest/guest (role: guest)")
+
+	// Start server with proper timeouts
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           e,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	if err = srv.ListenAndServe(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func registerRoutes(e *echo.Echo, authMiddleware *jwt.EchoJWTMiddleware) {
+	// Public routes
+	e.POST("/login", authMiddleware.LoginHandler)
+	e.POST("/refresh", authMiddleware.RefreshHandler)
+
+	// Public info endpoint
+	e.GET("/info", func(c *echo.Context) error {
+		return c.JSON(200, map[string]interface{}{
+			"message": "Authorization Example API",
+			"users": map[string]interface{}{
+				"admin": map[string]interface{}{"password": "admin", "role": "admin", "access": "All routes"},
+				"user": map[string]interface{}{
+					"password": "user",
+					"role":     "user",
+					"access":   "/user/* and /auth/profile",
+				},
+				"guest": map[string]interface{}{"password": "guest", "role": "guest", "access": "/auth/hello only"},
+			},
+			"routes": map[string]interface{}{
+				"public": []string{"/login", "/refresh", "/info"},
+				"admin":  []string{"/admin/users", "/admin/settings", "/admin/reports"},
+				"user":   []string{"/user/profile", "/user/settings"},
+				"auth":   []string{"/auth/hello", "/auth/profile", "/auth/logout"},
+			},
+		})
+	})
+
+	// Admin routes - only admin role can access
+	adminRoutes := e.Group("/admin")
+	adminRoutes.Use(authMiddleware.MiddlewareFunc())
+	adminRoutes.GET("/users", adminUsersHandler)
+	adminRoutes.GET("/settings", adminSettingsHandler)
+	adminRoutes.GET("/reports", adminReportsHandler)
+	adminRoutes.POST("/users", createUserHandler)
+	adminRoutes.DELETE("/users/:id", deleteUserHandler)
+
+	// User routes - user and admin roles can access
+	userRoutes := e.Group("/user")
+	userRoutes.Use(authMiddleware.MiddlewareFunc())
+	userRoutes.GET("/profile", userProfileHandler)
+	userRoutes.PUT("/profile", updateProfileHandler)
+	userRoutes.GET("/settings", userSettingsHandler)
+
+	// General auth routes - different permissions based on path
+	authRoutes := e.Group("/auth")
+	authRoutes.Use(authMiddleware.MiddlewareFunc())
+	authRoutes.GET("/hello", helloHandler)                       // All authenticated users
+	authRoutes.GET("/profile", profileHandler)                   // User and admin only
+	authRoutes.POST("/logout", authMiddleware.LogoutHandler)     // User Logout
+	authRoutes.GET("/whoami", whoAmIHandler)                     // All authenticated users
+}
+
+func initParams() *jwt.EchoJWTMiddleware {
+	return &jwt.EchoJWTMiddleware{
+		Realm:       "authorization example",
+		Key:         []byte("secret key"),
+		Timeout:     time.Hour,
+		MaxRefresh:  time.Hour,
+		IdentityKey: identityKey,
+		PayloadFunc: payloadFunc(),
+
+		IdentityHandler: identityHandler(),
+		Authenticator:   authenticator(),
+		Authorizer:      authorizator(),
+		Unauthorized:    unauthorized(),
+		TokenLookup:     "header: Authorization, query: token, cookie: jwt",
+		TokenHeadName:   "Bearer",
+		TimeFunc:        time.Now,
+	}
+}
+
+func payloadFunc() func(data any) gojwt.MapClaims {
+	return func(data any) gojwt.MapClaims {
+		if v, ok := data.(*User); ok {
+			return gojwt.MapClaims{
+				identityKey: v.UserName,
+				roleKey:     v.Role,
+			}
+		}
+		return gojwt.MapClaims{}
+	}
+}
+
+func identityHandler() func(c *echo.Context) any {
+	return func(c *echo.Context) any {
+		claims := jwt.ExtractClaims(c)
+		role, _ := claims[roleKey].(string)
+		return &User{
+			UserName: claims[identityKey].(string),
+			Role:     role,
+		}
+	}
+}
+
+func authenticator() func(c *echo.Context) (any, error) {
+	return func(c *echo.Context) (any, error) {
+		var loginVals login
+		if err := c.Bind(&loginVals); err != nil {
+			return "", jwt.ErrMissingLoginValues
+		}
+
+		userID := loginVals.Username
+		password := loginVals.Password
+
+		// Define users with their roles
+		users := map[string]map[string]string{
+			"admin": {"password": "admin", "role": "admin"},
+			"user":  {"password": "user", "role": "user"},
+			"guest": {"password": "guest", "role": "guest"},
+		}
+
+		if userData, exists := users[userID]; exists && userData["password"] == password {
+			return &User{
+				UserName: userID,
+				Role:     userData["role"],
+			}, nil
+		}
+
+		return nil, jwt.ErrFailedAuthentication
+	}
+}
+
+// Comprehensive authorizer that demonstrates different authorization patterns
+func authorizator() func(c *echo.Context, data any) bool {
+	return func(c *echo.Context, data any) bool {
+		user, ok := data.(*User)
+		if !ok {
+			return false
+		}
+
+		path := c.Request().URL.Path
+		method := c.Request().Method
+
+		log.Printf("Authorization check - User: %s, Role: %s, Path: %s, Method: %s",
+			user.UserName, user.Role, path, method)
+
+		// Admin has access to everything
+		if user.Role == roleAdmin {
+			return true
+		}
+
+		// Admin routes - only admin allowed (already handled above, but explicit for clarity)
+		if strings.HasPrefix(path, "/admin/") {
+			return user.Role == roleAdmin
+		}
+
+		// User routes - user and admin roles allowed
+		if strings.HasPrefix(path, "/user/") {
+			return user.Role == "user" || user.Role == roleAdmin
+		}
+
+		// Auth routes with specific rules
+		if strings.HasPrefix(path, "/auth/") {
+			switch path {
+			case "/auth/hello", "/auth/whoami", "/auth/logout":
+				// All authenticated users can access
+				return true
+			case "/auth/profile":
+				// Only user and admin roles
+				return user.Role == "user" || user.Role == roleAdmin
+			}
+		}
+
+		// Default: deny access
+		return false
+	}
+}
+
+func unauthorized() func(c *echo.Context, code int, message string) {
+	return func(c *echo.Context, code int, message string) {
+		c.JSON(code, map[string]interface{}{
+			"code":    code,
+			"message": message,
+			"path":    c.Request().URL.Path,
+			"method":  c.Request().Method,
+		})
+	}
+}
+
+// Handler functions
+func adminUsersHandler(c *echo.Context) error {
+	return c.JSON(200, map[string]interface{}{
+		"message": "Admin Users Management",
+		"users":   []string{"admin", "user1", "user2", "guest1"},
+		"access":  "admin only",
+	})
+}
+
+func adminSettingsHandler(c *echo.Context) error {
+	return c.JSON(200, map[string]interface{}{
+		"message":  "Admin Settings",
+		"settings": map[string]interface{}{"max_users": 100, "allow_registration": true},
+		"access":   "admin only",
+	})
+}
+
+func adminReportsHandler(c *echo.Context) error {
+	return c.JSON(200, map[string]interface{}{
+		"message": "Admin Reports",
+		"reports": []string{"daily_usage", "user_activity", "system_health"},
+		"access":  "admin only",
+	})
+}
+
+func createUserHandler(c *echo.Context) error {
+	return c.JSON(200, map[string]interface{}{
+		"message": "User created successfully",
+		"access":  "admin only",
+	})
+}
+
+func deleteUserHandler(c *echo.Context) error {
+	userID := c.Param("id")
+	return c.JSON(200, map[string]interface{}{
+		"message": "User deleted successfully",
+		"user_id": userID,
+		"access":  "admin only",
+	})
+}
+
+func userProfileHandler(c *echo.Context) error {
+	user := c.Get(identityKey)
+	return c.JSON(200, map[string]interface{}{
+		"message":  "User Profile",
+		"username": user.(*User).UserName,
+		"role":     user.(*User).Role,
+		"access":   "user and admin only",
+	})
+}
+
+func updateProfileHandler(c *echo.Context) error {
+	user := c.Get(identityKey)
+	return c.JSON(200, map[string]interface{}{
+		"message":  "Profile updated successfully",
+		"username": user.(*User).UserName,
+		"access":   "user and admin only",
+	})
+}
+
+func userSettingsHandler(c *echo.Context) error {
+	user := c.Get(identityKey)
+	return c.JSON(200, map[string]interface{}{
+		"message":  "User Settings",
+		"username": user.(*User).UserName,
+		"settings": map[string]interface{}{"theme": "dark", "notifications": true},
+		"access":   "user and admin only",
+	})
+}
+
+func helloHandler(c *echo.Context) error {
+	claims := jwt.ExtractClaims(c)
+	user := c.Get(identityKey)
+	return c.JSON(200, map[string]interface{}{
+		"message":  "Hello World!",
+		"userID":   claims[identityKey],
+		"userName": user.(*User).UserName,
+		"role":     user.(*User).Role,
+		"access":   "all authenticated users",
+	})
+}
+
+func profileHandler(c *echo.Context) error {
+	claims := jwt.ExtractClaims(c)
+	user := c.Get(identityKey)
+	return c.JSON(200, map[string]interface{}{
+		"message":  "Profile Information",
+		"userID":   claims[identityKey],
+		"userName": user.(*User).UserName,
+		"role":     user.(*User).Role,
+		"access":   "user and admin roles only",
+	})
+}
+
+func whoAmIHandler(c *echo.Context) error {
+	claims := jwt.ExtractClaims(c)
+	user := c.Get(identityKey)
+	return c.JSON(200, map[string]interface{}{
+		"identity": claims[identityKey],
+		"role":     claims[roleKey],
+		"user":     user.(*User),
+		"claims":   claims,
+		"access":   "all authenticated users",
+	})
+}
